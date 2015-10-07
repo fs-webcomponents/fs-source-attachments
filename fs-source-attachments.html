@@ -1,0 +1,91 @@
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../fs-client/fs-client.html">
+<link rel="import" href="../fs-behavior/fs-behavior.html">
+<link rel="import" href="../fs-person-chip/fs-person-chip.html">
+
+<!--
+List persons that a source (URL) is attached to.
+
+Basic example:
+
+    <fs-source-attachments url="https://domain.com/source/url"></fs-source-attachments>
+
+@group FamilySearch Elements
+@element fs-source-attachments
+@demo demo/index.html
+-->
+<dom-module id="fs-source-attachments">
+  <template>
+    <style>
+      :host {
+        display: block;
+      }
+    </style>
+    <fs-client name="[[clientName]]" on-authenticated-changed="_urlChanged"></fs-client>
+    <template is="dom-repeat" items="{{personIds}}">
+      <fs-person-chip person-id="{{item}}"></fs-person-chip>
+    </template>
+  </template>
+</dom-module>
+
+<script>
+
+  Polymer({
+
+    is: 'fs-source-attachments',
+    
+    properties: {
+      
+      url: {
+        type: String,
+        notify: true,
+        value: '',
+        observer: '_urlChanged'
+      },
+      
+      personIds: {
+        type: Array,
+        notify: true,
+        readOnly: true,
+        value: function(){
+          return [];
+        }
+      }
+      
+    },
+
+    behaviors: [FSBehavior],
+    
+    _urlChanged: function(){
+      if(this.url && this.isAuthenticated()){
+        var self = this;
+        this.debounce('fs-source-attachments-load', function(){
+          this._load();
+        }, 400);
+      } else {
+        this._setPersonIds([]);
+      }
+    },
+    
+    _load: function(){
+      // TODO: use built-in method when available
+      // https://github.com/FamilySearch/familysearch-javascript-sdk/issues/127
+      var self = this,
+          url = '/platform/tree/source-references?source=' + this.url,
+          headers = {
+            'X-FS-Feature-Tag': 'source-ref-query-param-change',
+            'Accept': 'application/x-fs-v1+json'
+          };
+      self.getClient().http('GET', url, headers).then(function(response){
+        var responseData = response.getData();
+        if(responseData && responseData.persons && responseData.persons.length){
+          self._setPersonIds(responseData.persons.map(function(person){
+            return person.id;
+          }));
+        }
+      });
+    }
+    
+  });
+
+</script>
