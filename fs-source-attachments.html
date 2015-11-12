@@ -27,7 +27,7 @@ Basic example:
     </style>
     <fs-client name="[[clientName]]" on-authenticated-changed="_urlChanged"></fs-client>
     <template is="dom-repeat" items="{{personIds}}">
-      <fs-person-chip person-id="{{item}}"></fs-person-chip>
+      <fs-person-chip person-id="{{item}}" clientName="[[clientName]]"></fs-person-chip>
     </template>
   </template>
 </dom-module>
@@ -62,7 +62,6 @@ Basic example:
     
     _urlChanged: function(){
       if(this.url && this.isAuthenticated()){
-        var self = this;
         this.debounce('fs-source-attachments-load', function(){
           this._load();
         }, 400);
@@ -72,23 +71,32 @@ Basic example:
     },
     
     _load: function(){
-      // TODO: use built-in method when available
-      // https://github.com/FamilySearch/familysearch-javascript-sdk/issues/127
-      var self = this,
-          url = '/platform/tree/source-references?source=' + this.url,
-          headers = {
-            'X-FS-Feature-Tag': 'source-ref-query-param-change',
-            'Accept': 'application/x-fs-v1+json'
-          };
-      self.getClient().http('GET', url, headers).then(function(response){
-        var responseData = response.getData();
-        if(responseData && responseData.persons && responseData.persons.length){
-          self._setPersonIds(responseData.persons.map(function(person){
-            return person.id;
-          }));
-        } else {
-          self._setPersonIds([]);
-        }
+      var self = this;
+      self.getClient().getSourceAttachments(this.url).then(function(response){
+        
+        // https://groups.google.com/a/ldsmail.net/d/msg/FSDN/Pg_VyWNYlzs/BECXG0nnBwAJ
+        // Urls are not matched exactly so we enforce exact matching here. First
+        // we gather a list of source Ids that actually match. If we found any
+        // then we compare the source Ids against source refs to get a list of
+        // persons that the matching sources are attached to.
+        
+        var matchingSourceIds = response.getSourceDescriptions().filter(function(sourceDescription){
+          return sourceDescription.getAbout() === self.url;
+        }).map(function(sourceDescription){
+          return sourceDescription.getId();
+        });
+        
+        var matchingPersonIds = [],
+            personRefs = response.getPersonSourceRefs();
+        matchingSourceIds.forEach(function(sourceId){
+          personRefs.forEach(function(ref){
+            if(ref.getDescription().indexOf(sourceId) !== -1){
+              matchingPersonIds.push(ref.getAttachedEntityId());
+            }
+          });
+        });
+        
+        self._setPersonIds(matchingPersonIds);
       });
     }
     
