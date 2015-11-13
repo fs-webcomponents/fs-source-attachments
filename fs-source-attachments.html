@@ -33,7 +33,8 @@ Basic example:
 </dom-module>
 
 <script>
-
+(function(){
+  
   Polymer({
 
     is: 'fs-source-attachments',
@@ -96,10 +97,19 @@ Basic example:
           });
         });
         
-        self._setPersonIds(matchingPersonIds);
+        self._setPersonIds(uniq(matchingPersonIds));
       });
     }
     
   });
 
+  // http://stackoverflow.com/questions/9229645/remove-duplicates-from-javascript-array
+  function uniq(a) {
+    var seen = {};
+    return a.filter(function(item) {
+      return seen.hasOwnProperty(item) ? false : (seen[item] = true);
+    });
+  }
+  
+}());
 </script>
