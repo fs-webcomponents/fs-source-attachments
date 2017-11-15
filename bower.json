@@ -1,6 +1,6 @@
 {
   "name": "fs-source-attachments",
-  "version": "0.1.2",
+  "version": "4.0.0",
   "description": "List persons that a source (URL) is attached to.",
   "keywords": [
     "web-component",
