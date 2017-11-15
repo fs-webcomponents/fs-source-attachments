@@ -1,19 +1,8 @@
 <link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../fs-client/fs-client.html">
-<link rel="import" href="../fs-behavior/fs-behavior.html">
+<link rel="import" href="../fs-request/fs-request.html">
+<link rel="import" href="../fs-api-aware/fs-api-aware.html">
 <link rel="import" href="../fs-person-chip/fs-person-chip.html">
 
-<!--
-List persons that a source (URL) is attached to.
-
-Basic example:
-
-    <fs-source-attachments url="https://domain.com/source/url"></fs-source-attachments>
-
-@group FamilySearch Elements
-@element fs-source-attachments
-@demo demo/index.html
--->
 <dom-module id="fs-source-attachments">
   <template>
     <style>
@@ -25,91 +14,105 @@ Basic example:
         margin: 8px 0;
       }
     </style>
-    <fs-client name="[[clientName]]" on-authenticated-changed="_urlChanged"></fs-client>
+    <fs-request
+      id="request"
+      url="{{_computeRequestUrl(url)}}"
+      client-name="[[clientName]]" 
+      require-authentication
+      on-response="_handleResponse"></fs-client>
     <template is="dom-repeat" items="{{personIds}}">
       <fs-person-chip person-id="{{item}}" clientName="[[clientName]]"></fs-person-chip>
     </template>
   </template>
-</dom-module>
-
-<script>
-(function(){
-  
-  Polymer({
-
-    is: 'fs-source-attachments',
+  <script>
     
-    properties: {
+    /**
+     * List persons that a source (URL) is attached to.
+     *  
+     * Basic example:
+     *  
+     *     <fs-source-attachments url="https://domain.com/source/url"></fs-source-attachments>
+     *  
+     * @customElement
+     * @polymer
+     * @demo demo/index.html
+     */
+    class FsSourceAttachments extends FSApiAwareMixin(Polymer.Element) {
+  
+      static get is() { return 'fs-source-attachments'; }
       
-      url: {
-        type: String,
-        notify: true,
-        value: '',
-        observer: '_urlChanged'
-      },
+      static get properties() {
+        return {
+          url: {
+            type: String,
+            notify: true,
+            value: '',
+            observer: '_urlChanged'
+          },
+          personIds: {
+            type: Array,
+            notify: true,
+            readOnly: true,
+            value: function(){
+              return [];
+            }
+          }
+        };
+      }
       
-      personIds: {
-        type: Array,
-        notify: true,
-        readOnly: true,
-        value: function(){
-          return [];
+      _computeRequestUrl(url) {
+        if(url) {
+          return `/platform/tree/source-references?source=${encodeURIComponent(url)}`;
+        }
+      }
+  
+      _urlChanged() {
+        if(this.url) {
+          this._debouncer = Polymer.Debouncer.debounce(
+            this._debouncer,
+            Polymer.Async.timeOut.after(400),
+            () => {
+              this.$.request.generateRequest();
+            }
+          );
+        } else {
+          this._setPersonIds([]);
         }
       }
       
-    },
-
-    behaviors: [FSBehavior],
-    
-    _urlChanged: function(){
-      if(this.url && this.isAuthenticated()){
-        this.debounce('fs-source-attachments-load', function(){
-          this._load();
-        }, 400);
-      } else {
+      _handleResponse(e) {
+        const response = e.detail.response;
         this._setPersonIds([]);
-      }
-    },
-    
-    _load: function(){
-      var self = this;
-      self.getClient().getSourceAttachments(this.url).then(function(response){
-        
-        // https://groups.google.com/a/ldsmail.net/d/msg/FSDN/Pg_VyWNYlzs/BECXG0nnBwAJ
-        // Urls are not matched exactly so we enforce exact matching here. First
-        // we gather a list of source Ids that actually match. If we found any
-        // then we compare the source Ids against source refs to get a list of
-        // persons that the matching sources are attached to.
-        
-        var matchingSourceIds = response.getSourceDescriptions().filter(function(sourceDescription){
-          return sourceDescription.getAbout() === self.url;
-        }).map(function(sourceDescription){
-          return sourceDescription.getId();
-        });
-        
-        var matchingPersonIds = [],
-            personRefs = response.getPersonSourceRefs();
-        matchingSourceIds.forEach(function(sourceId){
-          personRefs.forEach(function(ref){
-            if(ref.getDescription().indexOf(sourceId) !== -1){
-              matchingPersonIds.push(ref.getAttachedEntityId());
-            }
+        if(response.data && response.data.sourceDescriptions && response.data.persons) {
+          
+          // https://groups.google.com/a/ldsmail.net/d/msg/FSDN/Pg_VyWNYlzs/BECXG0nnBwAJ
+          // Urls are not matched exactly so we enforce exact matching here. First
+          // we gather a list of source Ids that actually match. If we found any
+          // then we compare the source Ids against source refs to get a list of
+          // persons that the matching sources are attached to.
+          const matchingSourceIds = response.data.sourceDescriptions.filter((sourceDescription) => {
+            return sourceDescription.about === this.url;
+          }).map((sourceDescription) => {
+            return sourceDescription.id;
           });
-        });
-        
-        self._setPersonIds(uniq(matchingPersonIds));
-      });
+          
+          const matchingPersonIds = response.data.persons.filter((person) => {
+            for(let i = 0; i < person.sources.length; i++) {
+              if(matchingSourceIds.indexOf(person.sources[i].descriptionId) !== -1) {
+                return true;
+              }
+            }
+            return false;
+          }).map((person) => {
+            return person.id;
+          });
+          
+          this._setPersonIds(matchingPersonIds);
+        }
+      }
+      
     }
     
-  });
-
-  // http://stackoverflow.com/questions/9229645/remove-duplicates-from-javascript-array
-  function uniq(a) {
-    var seen = {};
-    return a.filter(function(item) {
-      return seen.hasOwnProperty(item) ? false : (seen[item] = true);
-    });
-  }
-  
-}());
-</script>
+    window.customElements.define(FsSourceAttachments.is, FsSourceAttachments);
+  </script>
+</dom-module>
